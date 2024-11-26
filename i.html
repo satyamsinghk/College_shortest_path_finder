@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Campus Multi-Stop Pathfinder</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+      }
+
+      #map {
+        width: 100%;
+        height: 90vh;
+      }
+
+      .info {
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #ddd;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .info div {
+        font-size: 14px;
+      }
+
+      .info button {
+        padding: 5px 10px;
+        margin-left: 10px;
+        font-size: 14px;
+        cursor: pointer;
+        background-color: #007bff;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+      }
+
+      .info button:hover {
+        background-color: #0056b3;
+      }
+
+      .marker-popup {
+        font-size: 14px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="info">
+      <div>
+        <strong>Campus Multi-Stop Pathfinder</strong>
+        <span> | Select Start, Stops, and End on the Map</span>
+      </div>
+      <div>
+        <button onclick="resetSelection()">Reset Selection</button>
+        <button onclick="calculatePath()">Calculate Path</button>
+      </div>
+    </div>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+    <script>
+      // Initialize the map with zoom and pan disabled
+      const map = L.map("map", {
+        zoomControl: false, // Disable zoom control UI
+        dragging: false, // Disable dragging
+        doubleClickZoom: false, // Disable double-click zoom
+        scrollWheelZoom: false, // Disable zoom with scroll wheel
+        boxZoom: false, // Disable box zoom
+        keyboard: false, // Disable zoom/pan using keyboard
+      }).setView([10.7592, 78.8138], 16); // NIT Trichy coordinates
+
+      // Add static tile layer
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap contributors",
+      }).addTo(map);
+
+      // Markers for user selection
+      let startMarker = null;
+      let endMarker = null;
+      const stopMarkers = [];
+      let routeControl = null; // Routing control for multi-stop pathfinding
+
+      // Custom Marker Options
+      const markerOptions = {
+        start: { color: "green", title: "Start Location" },
+        stop: { color: "blue", title: "Stop Location" },
+        end: { color: "red", title: "End Location" },
+      };
+
+      // Map click event handler
+      map.on("click", (e) => {
+        const { lat, lng } = e.latlng;
+
+        // Add start, stop, or end markers dynamically
+        if (!startMarker) {
+          startMarker = L.marker([lat, lng], {
+            icon: createCustomIcon("green"),
+          })
+            .addTo(map)
+            .bindPopup("<strong>Start Location</strong>")
+            .openPopup();
+        } else if (!endMarker) {
+          endMarker = L.marker([lat, lng], { icon: createCustomIcon("red") })
+            .addTo(map)
+            .bindPopup("<strong>End Location</strong>")
+            .openPopup();
+        } else {
+          const stopMarker = L.marker([lat, lng], {
+            icon: createCustomIcon("blue"),
+          })
+            .addTo(map)
+            .bindPopup("<strong>Stop Location</strong>")
+            .openPopup();
+          stopMarkers.push(stopMarker);
+        }
+      });
+
+      // Custom Icon Generator
+      function createCustomIcon(color) {
+        return L.divIcon({
+          className: "custom-icon",
+          html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff;"></div>`,
+          iconSize: [20, 20],
+        });
+      }
+
+      // Reset all selections
+      function resetSelection() {
+        startMarker?.remove();
+        endMarker?.remove();
+        stopMarkers.forEach((marker) => marker.remove());
+        if (routeControl) {
+          map.removeControl(routeControl);
+        }
+        startMarker = null;
+        endMarker = null;
+        stopMarkers.length = 0;
+      }
+
+      // Calculate the multi-stop path
+      async function calculatePath() {
+        if (!startMarker || !endMarker) {
+          alert("Please select both start and end points.");
+          return;
+        }
+
+        // Gather waypoints: Start -> Stops -> End
+        const waypoints = [
+          startMarker.getLatLng(),
+          ...stopMarkers.map((marker) => marker.getLatLng()),
+          endMarker.getLatLng(),
+        ];
+
+        try {
+          // Clear previous route
+          if (routeControl) {
+            map.removeControl(routeControl);
+          }
+
+          // Use Leaflet Routing Machine to display the route
+          routeControl = L.Routing.control({
+            waypoints: waypoints,
+            router: L.Routing.osrmv1({
+              serviceUrl: "https://router.project-osrm.org/route/v1",
+            }),
+            show: false, // Hides the directions table
+            routeWhileDragging: false,
+            createMarker: function (i, waypoint) {
+              const isStart = i === 0;
+              const isEnd = i === waypoints.length - 1;
+              const color = isStart ? "green" : isEnd ? "red" : "blue";
+              return L.marker(waypoint.latLng, {
+                icon: createCustomIcon(color),
+              });
+            },
+          }).addTo(map);
+        } catch (error) {
+          console.error("Routing failed:", error);
+          alert(
+            "Routing failed. Please check your internet connection or OSRM service."
+          );
+        }
+      }
+    </script>
+  </body>
+</html>
